@@ -38,20 +38,22 @@ add_subdirectory(quickjs-ng)
 
 # Video and audio decoding (ADR-0015, ADR-0046): the minimal LGPL build that
 # tools/build_ffmpeg.ps1 makes from pinned sources. Every executable lands in one directory, so
-# the DLLs are copied there once.
+# the DLLs are copied there once. Binaries live under <dependency>/<processor> because Windows on
+# ARM needs its own build of each one next to the x64 one.
+set(gs_binary_arch "${GS_TARGET_ARCH}")
 foreach(gs_ffmpeg_library IN ITEMS avcodec avformat avutil swresample)
-    file(GLOB gs_ffmpeg_dll "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/bin/${gs_ffmpeg_library}-*.dll")
+    file(GLOB gs_ffmpeg_dll "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/${gs_binary_arch}/bin/${gs_ffmpeg_library}-*.dll")
     list(LENGTH gs_ffmpeg_dll gs_ffmpeg_dll_count)
     if(NOT gs_ffmpeg_dll_count EQUAL 1)
         message(FATAL_ERROR
-            "third_party/ffmpeg holds ${gs_ffmpeg_dll_count} ${gs_ffmpeg_library} DLLs instead of one; "
-            "rebuild it with tools/build_ffmpeg.ps1")
+            "third_party/ffmpeg/${gs_binary_arch} holds ${gs_ffmpeg_dll_count} ${gs_ffmpeg_library} DLLs instead of one; "
+            "rebuild it with tools/build_ffmpeg.ps1 -Arch ${gs_binary_arch}")
     endif()
     add_library(FFmpeg::${gs_ffmpeg_library} SHARED IMPORTED GLOBAL)
     set_target_properties(FFmpeg::${gs_ffmpeg_library} PROPERTIES
         IMPORTED_LOCATION "${gs_ffmpeg_dll}"
-        IMPORTED_IMPLIB "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/lib/${gs_ffmpeg_library}.lib"
-        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/include"
+        IMPORTED_IMPLIB "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/${gs_binary_arch}/lib/${gs_ffmpeg_library}.lib"
+        INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg/${gs_binary_arch}/include"
     )
     get_filename_component(gs_ffmpeg_dll_name "${gs_ffmpeg_dll}" NAME)
     configure_file("${gs_ffmpeg_dll}" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${gs_ffmpeg_dll_name}" COPYONLY)
@@ -61,20 +63,21 @@ set_property(TARGET FFmpeg::avformat APPEND PROPERTY INTERFACE_LINK_LIBRARIES FF
 
 add_library(SDL3::SDL3 SHARED IMPORTED GLOBAL)
 set_target_properties(SDL3::SDL3 PROPERTIES
-    IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/sdl3/bin/SDL3.dll"
-    IMPORTED_IMPLIB "${CMAKE_CURRENT_SOURCE_DIR}/sdl3/lib/SDL3.lib"
+    IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/sdl3/${gs_binary_arch}/bin/SDL3.dll"
+    IMPORTED_IMPLIB "${CMAKE_CURRENT_SOURCE_DIR}/sdl3/${gs_binary_arch}/lib/SDL3.lib"
     INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/sdl3/include"
 )
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/sdl3/bin/SDL3.dll" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/SDL3.dll" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/sdl3/${gs_binary_arch}/bin/SDL3.dll"
+               "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/SDL3.dll" COPYONLY)
 
 add_library(libusb::libusb SHARED IMPORTED GLOBAL)
 set_target_properties(libusb::libusb PROPERTIES
-    IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/libusb/bin/libusb-1.0.dll"
-    IMPORTED_IMPLIB "${CMAKE_CURRENT_SOURCE_DIR}/libusb/lib/libusb-1.0.lib"
+    IMPORTED_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/libusb/${gs_binary_arch}/bin/libusb-1.0.dll"
+    IMPORTED_IMPLIB "${CMAKE_CURRENT_SOURCE_DIR}/libusb/${gs_binary_arch}/lib/libusb-1.0.lib"
     INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/libusb/include"
 )
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/libusb/bin/libusb-1.0.dll" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/libusb-1.0.dll"
-               COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/libusb/${gs_binary_arch}/bin/libusb-1.0.dll"
+               "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/libusb-1.0.dll" COPYONLY)
 
 if(GS_BUILD_APP)
     # QR codes for wireless pairing (ADR-0059): Nayuki's QR Code generator as released. Its warnings
@@ -119,6 +122,7 @@ if(GS_BUILD_APP)
             --qt-version "${Qt6_VERSION}"
             --msvc-version "${MSVC_VERSION}"
             --platform-tools "${PROJECT_SOURCE_DIR}/packaging/adb.json"
+            --arch "${GS_TARGET_ARCH}"
             --json "${gs_licenses_dir}/licenses.json"
             --folder "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/licenses"
             --depfile "${gs_licenses_dir}/licenses.d"

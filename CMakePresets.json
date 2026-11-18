@@ -19,6 +19,49 @@
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
     },
     {
+      "name": "arm64-base",
+      "hidden": true,
+      "displayName": "MSVC x64 host, ARM64 target",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "architecture": { "value": "arm64", "strategy": "external" },
+      "toolset": { "value": "host=x64", "strategy": "external" },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_C_FLAGS_INIT": "/utf-8",
+        "CMAKE_CXX_FLAGS_INIT": "/utf-8",
+        "CMAKE_TOOLCHAIN_FILE": "$env{GS_QT_DIR}/lib/cmake/Qt6/qt.toolchain.cmake",
+        "CMAKE_PREFIX_PATH": "$env{GS_QT_DIR}",
+        "QT_HOST_PATH": "$env{GS_QT_HOST_DIR}"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "arm64-debug",
+      "displayName": "ARM64 Debug",
+      "inherits": "arm64-base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "arm64-release",
+      "displayName": "ARM64 Release (LTO)",
+      "inherits": "arm64-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON"
+      }
+    },
+    {
+      "name": "arm64-ci",
+      "displayName": "ARM64 CI (Release without LTO, warnings as errors)",
+      "inherits": "arm64-release",
+      "cacheVariables": {
+        "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "OFF",
+        "GS_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
       "name": "msvc-debug",
       "displayName": "MSVC x64 Debug",
       "inherits": "msvc-base",
@@ -66,7 +109,10 @@
     { "name": "msvc-release", "configurePreset": "msvc-release" },
     { "name": "msvc-asan", "configurePreset": "msvc-asan" },
     { "name": "core-only", "configurePreset": "core-only" },
-    { "name": "ci", "configurePreset": "ci" }
+    { "name": "ci", "configurePreset": "ci" },
+    { "name": "arm64-debug", "configurePreset": "arm64-debug" },
+    { "name": "arm64-release", "configurePreset": "arm64-release" },
+    { "name": "arm64-ci", "configurePreset": "arm64-ci" }
   ],
   "testPresets": [
     { "name": "msvc-debug", "configurePreset": "msvc-debug", "output": { "outputOnFailure": true } },
@@ -124,6 +170,13 @@
         { "type": "configure", "name": "ci" },
         { "type": "build", "name": "ci" },
         { "type": "test", "name": "ci" }
+      ]
+    },
+    {
+      "name": "arm64-release",
+      "steps": [
+        { "type": "configure", "name": "arm64-release" },
+        { "type": "build", "name": "arm64-release" }
       ]
     }
   ]

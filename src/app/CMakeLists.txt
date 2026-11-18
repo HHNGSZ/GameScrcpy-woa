@@ -582,13 +582,39 @@ qt_add_translations(GameScrcpy
 
 option(GS_DEPLOY_QT_ON_BUILD "Copy the Qt runtime next to GameScrcpy.exe after each build" ON)
 if(GS_DEPLOY_QT_ON_BUILD)
+    set(gs_windeployqt_hints "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_BINS}")
+    set(gs_windeployqt_qtpaths_args "")
+    # Qt reads ICU from Windows itself, so there is nothing of it to bundle; windeployqt still tries
+    # to copy system32\icuuc.dll on Windows versions that ship it and gives up when it cannot.
+    set(gs_windeployqt_extra_args "--ignore-library-errors")
+    if(NOT "${QT_HOST_PATH}" STREQUAL "" AND NOT "${QT_HOST_PATH}" STREQUAL "${QT6_INSTALL_PREFIX}")
+        # Cross build: windeployqt in the target kit is a program for the target processor, and the
+        # host one only knows the host kit's paths. A relocatable host qtpaths next to a qt.conf that
+        # names the target kit gives the host tool the target's libraries, plugins and QML modules.
+        set(gs_qtpaths_shim "${CMAKE_BINARY_DIR}/deploy/qtpaths")
+        file(MAKE_DIRECTORY "${gs_qtpaths_shim}")
+        foreach(gs_shim_file IN ITEMS qtpaths.exe Qt6Core.dll)
+            if(EXISTS "${QT_HOST_PATH}/bin/${gs_shim_file}")
+                file(COPY_FILE "${QT_HOST_PATH}/bin/${gs_shim_file}" "${gs_qtpaths_shim}/${gs_shim_file}"
+                     ONLY_IF_DIFFERENT)
+            endif()
+        endforeach()
+        file(WRITE "${gs_qtpaths_shim}/qt.conf" "[Paths]\nPrefix=${QT6_INSTALL_PREFIX}\n")
+        set(gs_windeployqt_hints "${QT_HOST_PATH}/bin")
+        set(gs_windeployqt_qtpaths_args "--qtpaths" "${gs_qtpaths_shim}/qtpaths.exe")
+        # The system DXC the host has is an x64 program, and an ARM64 process cannot load it; the
+        # device's own copy is the one to use.
+        set(gs_windeployqt_extra_args "--ignore-library-errors" "--no-system-dxc-compiler")
+    endif()
     find_program(GS_WINDEPLOYQT windeployqt
-        HINTS "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_BINS}"
+        HINTS ${gs_windeployqt_hints}
         NO_DEFAULT_PATH
         REQUIRED
     )
     add_custom_command(TARGET GameScrcpy POST_BUILD
         COMMAND "${GS_WINDEPLOYQT}"
+            ${gs_windeployqt_qtpaths_args}
+            ${gs_windeployqt_extra_args}
             --verbose 0
             --no-translations
             --no-system-d3d-compiler
@@ -599,6 +625,16 @@ if(GS_DEPLOY_QT_ON_BUILD)
         COMMENT "Deploying the Qt runtime next to GameScrcpy.exe"
         VERBATIM
     )
+    if(NOT "${QT_HOST_PATH}" STREQUAL "" AND NOT "${QT_HOST_PATH}" STREQUAL "${QT6_INSTALL_PREFIX}")
+        # windeployqt takes libraries it does not count as part of Windows from the host's system
+        # folders; an ARM64 process cannot load the host's x64 copy of one, so they go.
+        add_custom_command(TARGET GameScrcpy POST_BUILD
+            COMMAND Python3::Interpreter "${PROJECT_SOURCE_DIR}/tools/prune_foreign_dlls.py"
+                "$<TARGET_FILE_DIR:GameScrcpy>" arm64
+            COMMENT "Removing the DLLs the deployment took from the host's system folders"
+            VERBATIM
+        )
+    endif()
 endif()
 
 add_custom_target(gs_server_package ALL

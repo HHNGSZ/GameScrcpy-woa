@@ -2,10 +2,16 @@
 
 #include "Kernels.h"
 
+#ifdef GS_VISION_X86
+
 #include <immintrin.h>
 #include <intrin.h>
 
+#endif
+
 namespace gs::vision {
+
+#ifdef GS_VISION_X86
 
 namespace {
 
@@ -34,10 +40,16 @@ bool detectAvx2() noexcept
 
 }
 
+#endif
+
 bool avx2Available() noexcept
 {
+#ifdef GS_VISION_X86
     static const bool available = detectAvx2();
     return available;
+#else
+    return false;
+#endif
 }
 
 Simd resolvedSimd(Simd requested) noexcept
@@ -50,8 +62,13 @@ namespace detail {
 const Kernels& kernels(Simd simd) noexcept
 {
     static constexpr Kernels kScalarKernels{&scalar::halve, &scalar::correlate, &scalar::accumulateColumns};
+#ifdef GS_VISION_X86
     static constexpr Kernels kAvx2Kernels{&avx2::halve, &avx2::correlate, &avx2::accumulateColumns};
     return resolvedSimd(simd) == Simd::Avx2 ? kAvx2Kernels : kScalarKernels;
+#else
+    static_cast<void>(simd);
+    return kScalarKernels;
+#endif
 }
 
 }

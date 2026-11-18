@@ -10,6 +10,9 @@
 #ifndef AppUrl
   #define AppUrl "https://github.com/NuoRan/GameScrcpy"
 #endif
+#ifndef Arch
+  #define Arch "x64"
+#endif
 
 [Setup]
 AppId={{0E92AB34-0BC4-4585-981A-51F0A82446DD}
@@ -26,8 +29,13 @@ DefaultGroupName=GameScrcpy
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
+#if Arch == "arm64"
+ArchitecturesAllowed=arm64
+ArchitecturesInstallIn64BitMode=arm64
+#else
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
+#endif
 MinVersion=10.0
 AppMutex=GameScrcpyRunning,Global\GameScrcpyRunning
 CloseApplications=yes
@@ -39,7 +47,11 @@ SetupIconFile=..\src\app\resources\GameScrcpy.ico
 UninstallDisplayName=GameScrcpy
 UninstallDisplayIcon={app}\GameScrcpy.exe
 OutputDir={#OutputDir}
+#if Arch == "arm64"
+OutputBaseFilename=GameScrcpy-{#AppVersion}-arm64-setup
+#else
 OutputBaseFilename=GameScrcpy-{#AppVersion}-setup
+#endif
 Compression=lzma2/max
 SolidCompression=yes
 

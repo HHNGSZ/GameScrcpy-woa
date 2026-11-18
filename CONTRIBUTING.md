@@ -67,8 +67,11 @@ cmake --workflow --preset msvc-debug
 | `msvc-release` | RelWithDebInfo，开启链接时优化 |
 | `msvc-asan` | Debug，开启 AddressSanitizer |
 | `ci` | 与持续集成相同：Release（不开链接时优化），警告视为错误，跳过要显卡、桌面或真机的测试 |
+| `arm64-debug` / `arm64-release` / `arm64-ci` | Windows on ARM：主机 x64、目标 ARM64，只是构建与打包，测试要装到设备上跑（见 [docs/arm64.md](docs/arm64.md)） |
 
 产物在 `build/<预设>/bin`，包括 `GameScrcpy.exe`、`gs.exe` 和各个测试程序。
+
+Windows on ARM 的构建要额外准备 ARM64 工具集与 ARM64 版 Qt 套件，`. .\tools\dev-env.ps1 -Arch arm64` 之后 `cmake --workflow --preset arm64-release`，步骤见 [docs/arm64.md](docs/arm64.md)。
 
 ## 构建 Android 端
 

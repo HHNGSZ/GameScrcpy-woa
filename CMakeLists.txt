@@ -13,6 +13,17 @@ endif()
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
+# Windows on ARM is a supported target (see docs/arm64.md). Everything downstream that has to tell
+# the two processors apart reads these two variables instead of guessing from the host.
+if(CMAKE_CXX_COMPILER_ARCHITECTURE_ID MATCHES "ARM64")
+    set(GS_TARGET_ARM64 ON)
+    set(GS_TARGET_ARCH "arm64")
+else()
+    set(GS_TARGET_ARM64 OFF)
+    set(GS_TARGET_ARCH "x64")
+endif()
+message(STATUS "Target processor: ${GS_TARGET_ARCH}")
+
 option(GS_BUILD_APP "Build the Qt Quick application (requires Qt 6.10)" ON)
 option(GS_BUILD_TESTS "Build the unit tests" ON)
 

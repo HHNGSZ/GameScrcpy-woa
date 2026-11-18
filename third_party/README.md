@@ -23,8 +23,9 @@
 
 ## 构建说明
 
-- qmsetup 是配置阶段使用的主机工具，只构建一次并安装到 `build/_shared/qmsetup`，所有预设共用；删除 `build/` 后首次配置会重新构建（约 10 秒）。
-- QWindowKit 以静态库形式随工程一起编译（`add_subdirectory(... SYSTEM)`，不受本项目警告策略约束）。
+- **二进制依赖按处理器分目录**：FFmpeg、SDL3、libusb 与 TypeScript 各自放在 `<依赖>/x64/` 与 `<依赖>/arm64/` 下；FFmpeg 的头文件也分开放，因为 configure 写出的 `libavutil/avconfig.h` 在两种处理器上不同（`AV_HAVE_FAST_UNALIGNED` 一边是 1，一边是 0）。SDL3 与 libusb 的头文件两种处理器一致，放在依赖根目录共用。CMake 按目标处理器（`GS_TARGET_ARCH`）选其中一份。三个构建脚本用 `-Arch arm64` 生成 ARM64 那一份，先 `. .\tools\dev-env.ps1 -Arch arm64`。
+- qmsetup 是配置阶段使用的主机工具，只构建一次并安装到 `build/_shared/qmsetup`，所有预设共用；删除 `build/` 后首次配置会重新构建（约 10 秒）。它是主机工具，两种处理器的构建都用同一份。
+- QWindowKit 以静态库形式随工程一起编译（`add_subdirectory(... SYSTEM)`，不受本项目警告策略约束），因此每种处理器各自编译一份。
 
 ## 文件校验（单头文件）
 

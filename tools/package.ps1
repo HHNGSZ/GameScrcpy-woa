@@ -32,6 +32,8 @@
 #>
 [CmdletBinding()]
 param(
+    [ValidateSet('x64', 'arm64')]
+    [string]$Arch = 'x64',
     [string]$BuildDir,
     [string]$OutDir,
     [switch]$NoSetup,
@@ -42,7 +44,10 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 
 $root = Split-Path $PSScriptRoot -Parent
-if (-not $BuildDir) { $BuildDir = Join-Path $root 'build\msvc-release' }
+if (-not $BuildDir) {
+    $preset = if ($Arch -eq 'arm64') { 'arm64-release' } else { 'msvc-release' }
+    $BuildDir = Join-Path $root "build\$preset"
+}
 if (-not $OutDir) { $OutDir = Join-Path $root 'dist' }
 $BuildDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($BuildDir)
 $OutDir = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutDir)
@@ -90,9 +95,15 @@ function Get-ProjectInfo {
 
 function Assert-ReleaseBuild {
     foreach ($name in $Needed) {
-        if (-not (Test-Path -LiteralPath (Join-Path $bin $name))) {
-            throw "$name is not in ${bin}: build the msvc-release preset first"
+        if (Test-Path -LiteralPath (Join-Path $bin $name)) { continue }
+        if ($name -eq 'gs-server.apk' -and $Arch -eq 'arm64') {
+            # The phone server is Java and does not depend on the processor: an APK from the x64
+            # release of the same version drops in unchanged. Say so rather than write an incomplete
+            # package behind the caller's back.
+            Write-Warning "no gs-server.apk in ${bin}: copy one from an x64 install of this version before publishing"
+            continue
         }
+        throw "$name is not in ${bin}: build the $(if ($Arch -eq 'arm64') { 'arm64-release' } else { 'msvc-release' }) preset first"
     }
     if (Test-Path -LiteralPath (Join-Path $bin 'Qt6Cored.dll')) { throw "$bin holds a Debug build" }
     $cache = Join-Path $BuildDir 'CMakeCache.txt'
@@ -102,26 +113,35 @@ function Assert-ReleaseBuild {
     }
 }
 
+function Get-PeMachine([string]$Path) {
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -lt 0x40 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { return 0 }
+    $header = [BitConverter]::ToInt32($bytes, 0x3C)
+    if ($header -le 0 -or $header + 6 -ge $bytes.Length) { return 0 }
+    return [BitConverter]::ToUInt16($bytes, $header + 4)
+}
+
 function Find-VcRuntime {
     $candidates = @()
-    if ($env:VCToolsRedistDir) { $candidates += Join-Path $env:VCToolsRedistDir 'x64\Microsoft.VC143.CRT' }
+    if ($env:VCToolsRedistDir) { $candidates += Join-Path $env:VCToolsRedistDir "$Arch\Microsoft.VC143.CRT" }
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     if (Test-Path -LiteralPath $vswhere) {
-        $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        $component = if ($Arch -eq 'arm64') { 'Microsoft.VisualStudio.Component.VC.Tools.ARM64' } else { 'Microsoft.VisualStudio.Component.VC.Tools.x86.x64' }
+        $install = & $vswhere -latest -products * -requires $component -property installationPath
         if ($install) {
             $redist = Join-Path $install 'VC\Redist\MSVC'
             if (Test-Path -LiteralPath $redist) {
                 $candidates += Get-ChildItem -LiteralPath $redist -Directory |
                     Where-Object { $_.Name -match '^\d+(\.\d+)+$' } |
                     Sort-Object { [version]$_.Name } -Descending |
-                    ForEach-Object { Join-Path $_.FullName 'x64\Microsoft.VC143.CRT' }
+                    ForEach-Object { Join-Path $_.FullName "$Arch\Microsoft.VC143.CRT" }
             }
         }
     }
     foreach ($folder in $candidates) {
         if (Test-Path -LiteralPath (Join-Path $folder 'vcruntime140.dll')) { return $folder }
     }
-    throw 'the Visual C++ runtime (VC\Redist\MSVC\<version>\x64\Microsoft.VC143.CRT) was not found'
+    throw "the Visual C++ runtime (VC\Redist\MSVC\<version>\$Arch\Microsoft.VC143.CRT) was not found"
 }
 
 function Get-Adb {
@@ -374,26 +394,38 @@ function Write-Zip([string]$Path, [object[]]$Entries) {
 $project = Get-ProjectInfo
 $version = $project.Version
 Assert-ReleaseBuild
-$name = "GameScrcpy-$version"
+$name = if ($Arch -eq 'arm64') { "GameScrcpy-$version-arm64" } else { "GameScrcpy-$version" }
 $stage = Join-Path $OutDir $name
 Write-Host "Packing $name from $bin"
 Reset-Directory $stage
 Copy-Release $stage
 Assert-NoCommunity $stage
-Copy-Item -Path (Join-Path (Find-VcRuntime) '*.dll') -Destination $stage
-Assert-Samples $stage @(Add-Samples $stage)
+# The arm64 redist folder also holds the x64 vcruntime140_1.dll, which no ARM64 program loads.
+foreach ($dll in Get-ChildItem -LiteralPath (Find-VcRuntime) -Filter '*.dll') {
+    if ($Arch -eq 'arm64' -and (Get-PeMachine $dll.FullName) -ne 0xAA64) { continue }
+    Copy-Item -LiteralPath $dll.FullName -Destination $stage
+}
+if ($Arch -eq 'arm64') {
+    Write-Host 'samples: not packed, packing them runs gs.exe, which this host cannot do'
+} else {
+    Assert-Samples $stage @(Add-Samples $stage)
+}
 $adb = Get-Adb
 $adbFolder = Join-Path $stage 'adb'
 New-Item -ItemType Directory -Force $adbFolder | Out-Null
 foreach ($file in $adb.Files) { Copy-Item -LiteralPath (Join-Path $adb.Folder $file) -Destination $adbFolder }
 
 Test-Imports $stage
-$cli = Invoke-Isolated (Join-Path $stage 'gs.exe') @('--version')
-if ($cli.Code -ne 0 -or $cli.Text -notmatch [regex]::Escape($version)) {
-    throw "gs.exe --version from the package answered $($cli.Code): $($cli.Text.Trim())"
+if ($Arch -eq 'arm64') {
+    Write-Host 'gs.exe --version and --smoke-test are left to the ARM64 device: this host cannot run them'
+} else {
+    $cli = Invoke-Isolated (Join-Path $stage 'gs.exe') @('--version')
+    if ($cli.Code -ne 0 -or $cli.Text -notmatch [regex]::Escape($version)) {
+        throw "gs.exe --version from the package answered $($cli.Code): $($cli.Text.Trim())"
+    }
+    Write-Host "gs.exe --version with only Windows on PATH: $($cli.Text.Trim())"
 }
-Write-Host "gs.exe --version with only Windows on PATH: $($cli.Text.Trim())"
-if ($Smoke) {
+if ($Smoke -and $Arch -ne 'arm64') {
     $data = Join-Path ([IO.Path]::GetTempPath()) "gs-package-smoke-$PID"
     try {
         $run = Invoke-Isolated (Join-Path $stage 'GameScrcpy.exe') @('--smoke-test') @{ GS_DATA_DIR = $data } 90
@@ -407,7 +439,7 @@ if ($Smoke) {
 $outputs = @()
 if (-not $NoSetup) {
     $iscc = Find-Iscc
-    & $iscc '/Qp' "/DAppVersion=$version" "/DReleaseDir=$stage" "/DOutputDir=$OutDir" "/DAppUrl=$($project.Url)" (Join-Path $root 'packaging\GameScrcpy.iss')
+    & $iscc '/Qp' "/DAppVersion=$version" "/DReleaseDir=$stage" "/DOutputDir=$OutDir" "/DAppUrl=$($project.Url)" "/DArch=$Arch" (Join-Path $root 'packaging\GameScrcpy.iss')
     Assert-ExitCode 'ISCC'
     $outputs += Join-Path $OutDir "$name-setup.exe"
 }

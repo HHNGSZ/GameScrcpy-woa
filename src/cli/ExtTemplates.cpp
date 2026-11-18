@@ -182,7 +182,7 @@ constexpr std::string_view kNativeAgents = R"md(# Native extension
 
 A GameScrcpy extension with a DLL written in C++ against `include/gamescrcpy_ext.h`, GameScrcpy's native interface. This folder is the extension: `manifest.json` describes it and the build puts `native.dll` next to it.
 
-- Build with Visual Studio 2022 for x64: `cmake -S . -B .build` and `cmake --build .build --config Release`. Folders whose names start with a dot stay out of checks and packages, so `.build` never ships.
+- Build with Visual Studio 2022 for the processor you ship: `cmake -S . -B .build` and `cmake --build .build --config Release` for x64, or open a `vcvarsamd64_arm64` prompt and add `-A ARM64` for Windows on ARM. List the DLL under `contributes.native.dll` as `x64`, `arm64` or both, since GameScrcpy loads the one that fits the machine it runs on. Folders whose names start with a dot stay out of checks and packages, so `.build` never ships.
 - Check: `gs validate .` checks the manifest and its files.
 - Test: `gs ext test .` loads the manifest, the DLL and the scripts without GameScrcpy and without a phone, and runs `tests/*.json`. `--hosted` runs the DLL in gs-exthost.exe, as GameScrcpy runs extensions from others; `--json` writes the report for tools. The exit code is 0 when every step passes, 1 when a step fails and 2 when the extension cannot be loaded.
 - Run a job from the command line: `gs ext . countdown --from 5` runs the command that `contributes.cli` declares.

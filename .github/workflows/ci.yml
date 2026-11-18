@@ -53,6 +53,43 @@ jobs:
           $out
           if ($LASTEXITCODE -ne 0 -or ($out | Select-String -Pattern '^(Warning|Error):')) { exit 1 }
 
+  client-arm64:
+    name: Client (Windows on ARM, MSVC cross, Qt 6.10)
+    runs-on: windows-2022
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Qt (host and target kits)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.10.1"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtshadertools
+          cache: true
+
+      - name: Install the ARM64 Qt kit
+        shell: pwsh
+        run: |
+          pip install aqtinstall
+          python -m aqt install-qt windows desktop 6.10.1 win64_msvc2022_arm64_cross_compiled `
+            -O $env:QT_ROOT_DIR\.. -m qtshadertools
+
+      - name: MSVC developer environment (host x64, target arm64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64_arm64
+
+      - name: Configure and build
+        shell: pwsh
+        run: |
+          $env:GS_QT_DIR = Join-Path $env:QT_ROOT_DIR '..\msvc2022_arm64'
+          $env:GS_QT_HOST_DIR = $env:QT_ROOT_DIR
+          cmake --preset arm64-ci
+          cmake --build --preset arm64-ci
+
   android:
     name: Android (protocol, server, companion)
     runs-on: ubuntu-24.04

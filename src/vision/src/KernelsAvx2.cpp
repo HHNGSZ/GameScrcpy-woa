@@ -1,5 +1,7 @@
 #include "Kernels.h"
 
+#ifdef GS_VISION_X86
+
 #include <immintrin.h>
 
 namespace gs::vision::detail::avx2 {
@@ -166,3 +168,5 @@ void accumulateColumns(const ColumnWindow& job) noexcept
 }
 
 }
+
+#endif

@@ -5,6 +5,10 @@
 #include <cstddef>
 #include <cstdint>
 
+#if defined(_M_X64) || defined(_M_AMD64) || defined(__x86_64__)
+#define GS_VISION_X86 1
+#endif
+
 namespace gs::vision::detail {
 
 struct Correlation {
@@ -59,6 +63,8 @@ void accumulateColumns(const ColumnWindow& job) noexcept;
 
 }
 
+#ifdef GS_VISION_X86
+
 namespace avx2 {
 
 void halve(const std::uint8_t* top, const std::uint8_t* bottom, std::uint8_t* out, int width) noexcept;
@@ -66,5 +72,7 @@ void correlate(const Correlation& job) noexcept;
 void accumulateColumns(const ColumnWindow& job) noexcept;
 
 }
+
+#endif
 
 }

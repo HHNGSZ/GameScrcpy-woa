@@ -12,7 +12,6 @@ add_library(gs_vision STATIC
     src/Image.cpp
     src/IntegralImage.cpp
     src/Kernels.h
-    src/KernelsAvx2.cpp
     src/KernelsScalar.cpp
     src/Matcher.cpp
     src/Simd.cpp
@@ -23,4 +22,9 @@ add_library(gs::vision ALIAS gs_vision)
 target_include_directories(gs_vision PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(gs_vision PUBLIC gs::base)
 gs_apply_compiler_policy(gs_vision)
-set_source_files_properties(src/KernelsAvx2.cpp PROPERTIES COMPILE_OPTIONS /arch:AVX2)
+
+# The AVX2 kernels are x86 only; the scalar kernels carry every other processor (see Simd.cpp).
+if(NOT GS_TARGET_ARM64)
+    target_sources(gs_vision PRIVATE src/KernelsAvx2.cpp)
+    set_source_files_properties(src/KernelsAvx2.cpp PROPERTIES COMPILE_OPTIONS /arch:AVX2)
+endif()

@@ -1,5 +1,7 @@
 [CmdletBinding()]
 param(
+    [ValidateSet('x64', 'arm64')]
+    [string]$Arch = 'x64',
     [switch]$SelfTest
 )
 
@@ -11,8 +13,9 @@ $Libusb = @{
     Sha256 = 'fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf'
 }
 
+$Platform = if ($Arch -eq 'arm64') { 'ARM64' } else { 'x64' }
 $MsbuildFlags = @(
-    '/p:Configuration=Release', '/p:Platform=x64', '/p:PlatformToolset=v143',
+    '/p:Configuration=Release', "/p:Platform=$Platform", '/p:PlatformToolset=v143',
     '/p:EnableWindowsHotplug=false', '/nologo', '/verbosity:minimal'
 )
 
@@ -20,7 +23,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $work = Join-Path $root 'deps\libusb'
 $downloads = Join-Path $work 'downloads'
 $sources = Join-Path $work 'src'
-$output = Join-Path $root 'third_party\libusb'
+$output = Join-Path $root "third_party\libusb\$Arch"
 
 function Assert-ExitCode([string]$What) {
     if ($LASTEXITCODE -ne 0) { throw "$What failed (exit code $LASTEXITCODE)" }
@@ -81,10 +84,13 @@ if ($SelfTest) {
     exit 0
 }
 
-foreach ($tool in 'cl.exe', 'msbuild.exe', 'tar.exe') {
+foreach ($tool in 'cl.exe', 'tar.exe') {
     if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
         throw "$tool is not on PATH: run . .\tools\dev-env.ps1 first"
     }
+}
+if ($Arch -eq 'x64' -and -not (Get-Command msbuild.exe -ErrorAction SilentlyContinue)) {
+    throw 'msbuild.exe is not on PATH: run . .\tools\dev-env.ps1 first'
 }
 
 $archive = Get-Source $Libusb
@@ -93,37 +99,81 @@ Reset-Directory $sources
 Assert-ExitCode 'tar (libusb)'
 $source = Join-Path $sources $Libusb.Name
 
-& msbuild.exe (Join-Path $source 'msvc\libusb_dll.vcxproj') @MsbuildFlags
-Assert-ExitCode 'msbuild (libusb)'
-$built = Join-Path $source 'build\v143\x64\Release\dll'
+if ($Arch -eq 'arm64') {
+    # `msvc/libusb_dll.vcxproj` has no ARM64 configuration, and MSBuild cannot start a tool on a
+    # machine whose environment block repeats a variable name (HTTPS_PROXY and https_proxy, for
+    # instance). ARM64 therefore compiles the same sources the project lists, with the same
+    # definitions, straight from cl, and links the shipped .def file.
+    $build = Join-Path $work 'build'
+    Reset-Directory $build
+    $sources = @(
+        'libusb\core.c', 'libusb\descriptor.c', 'libusb\hotplug.c', 'libusb\io.c', 'libusb\strerror.c',
+        'libusb\sync.c', 'libusb\os\events_windows.c', 'libusb\os\threads_windows.c',
+        'libusb\os\windows_common.c', 'libusb\os\windows_usbdk.c', 'libusb\os\windows_winusb.c'
+    ) | ForEach-Object { Join-Path $source $_ }
+    Push-Location $build
+    try {
+        & cl.exe /nologo /LD /O2 /MD /D_WIN32_WINNT=_WIN32_WINNT_VISTA /D_CRT_SECURE_NO_WARNINGS /DNDEBUG `
+            "/I$(Join-Path $source 'msvc')" "/I$(Join-Path $source 'libusb')" @sources `
+            /link "/DEF:$(Join-Path $source 'libusb\libusb-1.0.def')" /OUT:libusb-1.0.dll /IMPLIB:libusb-1.0.lib
+        Assert-ExitCode 'cl (libusb)'
+    } finally {
+        Pop-Location
+    }
+    $built = $build
+    $builtLib = $build
+} else {
+    & msbuild.exe (Join-Path $source 'msvc\libusb_dll.vcxproj') @MsbuildFlags
+    Assert-ExitCode 'msbuild (libusb)'
+    $built = Join-Path $source "build\v143\$Platform\Release\dll"
+    $builtLib = $built
+}
 
+$shared = Split-Path $output -Parent
 Reset-Directory $output
-foreach ($dir in 'include', 'lib', 'bin', 'licenses') { New-Item -ItemType Directory -Force (Join-Path $output $dir) | Out-Null }
-Copy-Item (Join-Path $source 'libusb\libusb.h') (Join-Path $output 'include')
-Copy-Item (Join-Path $built 'libusb-1.0.lib') (Join-Path $output 'lib')
+foreach ($dir in 'lib', 'bin') { New-Item -ItemType Directory -Force (Join-Path $output $dir) | Out-Null }
+Copy-Item -Force (Join-Path $source 'libusb\libusb.h') (Join-Path $shared 'include')
+Copy-Item (Join-Path $builtLib 'libusb-1.0.lib') (Join-Path $output 'lib')
 Copy-Item (Join-Path $built 'libusb-1.0.dll') (Join-Path $output 'bin')
-Copy-Item (Join-Path $source 'COPYING') (Join-Path $output 'licenses\libusb-COPYING')
-Copy-Item (Join-Path $source 'AUTHORS') (Join-Path $output 'licenses\libusb-AUTHORS')
+Copy-Item -Force (Join-Path $source 'COPYING') (Join-Path $shared 'licenses\libusb-COPYING')
+Copy-Item -Force (Join-Path $source 'AUTHORS') (Join-Path $shared 'licenses\libusb-AUTHORS')
 
-$msbuildVersion = ((& msbuild.exe -version -nologo) | Select-Object -Last 1)
+$toolLines = @(
+    '| Input | Version | SHA-256 |'
+    '|---|---|---|'
+    "| libusb | $($Libusb.Name) | ``$($Libusb.Sha256.ToLowerInvariant())`` |"
+    "| MSVC | $env:VCToolsVersion | |"
+)
+$howTo = @()
+if ($Arch -eq 'arm64') {
+    $toolLines += "| CMake | not used | |"
+    $howTo += 'Built with cl from the sources `msvc/libusb_dll.vcxproj` lists (that project has no ARM64 ' +
+              'configuration), linking `libusb/libusb-1.0.def` for the exports:'
+    $howTo += ''
+    $howTo += '```'
+    $howTo += 'cl /LD /O2 /MD /D_WIN32_WINNT=_WIN32_WINNT_VISTA /D_CRT_SECURE_NO_WARNINGS /DNDEBUG ' +
+              '/I msvc /I libusb <sources> /link /DEF:libusb/libusb-1.0.def'
+    $howTo += '```'
+} else {
+    $toolLines += "| MSBuild | $(((& msbuild.exe -version -nologo) | Select-Object -Last 1)) | |"
+    $howTo += 'Built from `msvc/libusb_dll.vcxproj` with:'
+    $howTo += ''
+    $howTo += '```'
+    $howTo += ($MsbuildFlags -join "`n")
+    $howTo += '```'
+}
 $files = Get-ChildItem -Path (Join-Path $output 'bin'), (Join-Path $output 'lib') -File | Sort-Object FullName
 $info = @(
     '# libusb build (ADR-0009, AOA)'
     ''
     'Generated by `tools/build_libusb.ps1`; do not edit. Change the script and rebuild instead.'
     ''
-    '| Input | Version | SHA-256 |'
-    '|---|---|---|'
-    "| libusb | $($Libusb.Name) | ``$($Libusb.Sha256.ToLowerInvariant())`` |"
-    "| MSVC | $env:VCToolsVersion | |"
-    "| MSBuild | $msbuildVersion | |"
+    "Processor: ``$Arch``"
+    ''
+) + $toolLines + @(
     ''
     'The release signature was checked against the release key `C68187379B23DE9EFC46651E2C80FF56C6830A0E`.'
-    'Built from `msvc/libusb_dll.vcxproj` with:'
-    ''
-    '```'
-    ($MsbuildFlags -join "`n")
-    '```'
+) + $howTo + @(
     ''
     '| File | Bytes | SHA-256 |'
     '|---|---|---|'

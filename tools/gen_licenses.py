@@ -113,7 +113,7 @@ def pinned_version(pin: Path) -> str:
 
 
 def collect(third_party: Path, extras: Path, qt_version: str, msvc_version: str, platform_tools: Path,
-            inputs: list[Path]) -> list[dict[str, str]]:
+            inputs: list[Path], arch: str) -> list[dict[str, str]]:
     inputs += [third_party, third_party / "README.md"]
     rows = readme_rows(third_party / "README.md")
     covered = {component.directory.split("/")[0] for component in COMPONENTS}
@@ -135,7 +135,9 @@ def collect(third_party: Path, extras: Path, qt_version: str, msvc_version: str,
         if not cells[2].startswith(component.license.split()[0]):
             raise LicenseError(f"{component.name}: third_party/README.md says {cells[2]}, "
                                f"tools/gen_licenses.py says {component.license}")
-        buildinfo = third_party / component.directory.split("/")[0] / "BUILDINFO.md"
+        buildinfo = third_party / component.directory.split("/")[0] / arch / "BUILDINFO.md"
+        if not buildinfo.is_file():
+            buildinfo = third_party / component.directory.split("/")[0] / "BUILDINFO.md"
         if buildinfo.is_file():
             inputs.append(buildinfo)
             if version not in buildinfo.read_text(encoding="utf-8"):
@@ -202,6 +204,8 @@ def main() -> int:
     parser.add_argument("--qt-version", required=True)
     parser.add_argument("--msvc-version", required=True)
     parser.add_argument("--platform-tools", type=Path, required=True)
+    parser.add_argument("--arch", default="x64", choices=("x64", "arm64"),
+                        help="processor the shipped binaries were built for")
     parser.add_argument("--json", type=Path, required=True)
     parser.add_argument("--folder", type=Path, required=True)
     parser.add_argument("--depfile", type=Path)
@@ -209,7 +213,7 @@ def main() -> int:
     inputs: list[Path] = []
     try:
         entries = collect(args.third_party, args.extras, args.qt_version, toolset_of(args.msvc_version),
-                          args.platform_tools, inputs)
+                          args.platform_tools, inputs, args.arch)
     except (LicenseError, OSError, ValueError) as error:
         print(f"gen_licenses: {error}", file=sys.stderr)
         return 1

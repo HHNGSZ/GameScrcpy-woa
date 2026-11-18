@@ -13,7 +13,7 @@ add_dependencies(gs_cli gs_exthost_program)
 
 add_custom_target(gs_typescript ALL
     COMMAND "${CMAKE_COMMAND}" -E copy_directory_if_different
-        "${PROJECT_SOURCE_DIR}/third_party/typescript/lib" "$<TARGET_FILE_DIR:gs_cli>/typescript"
+        "${PROJECT_SOURCE_DIR}/third_party/typescript/${GS_TARGET_ARCH}/lib" "$<TARGET_FILE_DIR:gs_cli>/typescript"
     COMMENT "Placing the TypeScript compiler next to gs.exe"
     VERBATIM
 )
@@ -299,6 +299,7 @@ if(GS_BUILD_TESTS)
                      "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/signed-pack" -P "${PROJECT_SOURCE_DIR}/cmake/SignedPackCheck.cmake")
     add_test(NAME gs_cli_validate_architectures
              COMMAND "${CMAKE_COMMAND}" "-DGS=$<TARGET_FILE:gs_cli>" "-DDLL=$<TARGET_FILE:gs_ext_pc_clock>"
+                     "-DHOST=${GS_TARGET_ARCH}"
                      "-DWORK=${CMAKE_CURRENT_BINARY_DIR}/architectures"
                      -P "${PROJECT_SOURCE_DIR}/cmake/NativeArchitecturesCheck.cmake")
 

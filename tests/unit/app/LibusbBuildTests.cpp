@@ -34,7 +34,8 @@ std::string recordedHash(const std::string& buildInfo, const std::string& file)
 
 TEST_CASE("the shipped libusb is the build BUILDINFO.md records, from the pinned and checked release (ADR-0009)")
 {
-    const std::filesystem::path root = std::filesystem::path(GS_THIRD_PARTY_DIR) / "libusb";
+    const std::filesystem::path component = std::filesystem::path(GS_THIRD_PARTY_DIR) / "libusb";
+    const std::filesystem::path root = component / GS_THIRD_PARTY_ARCH;
     const std::string buildInfo = textOf(root / "BUILDINFO.md");
     REQUIRE_FALSE(buildInfo.empty());
     CHECK(buildInfo.find("fea36f34f9156400209595e300840767ab1a385ede1dc7ee893015aea9c6dbaf") != std::string::npos);
@@ -48,6 +49,7 @@ TEST_CASE("the shipped libusb is the build BUILDINFO.md records, from the pinned
     const std::string version = gs::platform::usbLibraryVersion();
     CHECK(version == "1.0.30");
     CHECK(buildInfo.find("libusb-" + version) != std::string::npos);
-    CHECK(std::filesystem::is_regular_file(root / "licenses" / "libusb-COPYING"));
-    CHECK(textOf(root / "licenses" / "libusb-COPYING").find("GNU LESSER GENERAL PUBLIC LICENSE") != std::string::npos);
+    CHECK(std::filesystem::is_regular_file(component / "licenses" / "libusb-COPYING"));
+    CHECK(textOf(component / "licenses" / "libusb-COPYING").find("GNU LESSER GENERAL PUBLIC LICENSE") !=
+          std::string::npos);
 }

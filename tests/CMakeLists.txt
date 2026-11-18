@@ -329,7 +329,7 @@ gs_add_unit_test(gs_media_tests
 )
 target_compile_definitions(gs_media_tests PRIVATE
     GS_VIDEO_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data/video"
-    GS_FFMPEG_BUILDINFO="${PROJECT_SOURCE_DIR}/third_party/ffmpeg/BUILDINFO.md"
+    GS_FFMPEG_BUILDINFO="${PROJECT_SOURCE_DIR}/third_party/ffmpeg/${GS_TARGET_ARCH}/BUILDINFO.md"
     GS_RECORDER_CHILD="$<TARGET_FILE:gs_recorder_child>"
 )
 target_include_directories(gs_media_tests PRIVATE
@@ -826,6 +826,7 @@ if(GS_BUILD_APP)
         GS_EXAMPLE_TASKS_DIR="${PROJECT_SOURCE_DIR}/examples/tasks"
         GS_LICENSES_FOLDER="${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/licenses"
         GS_THIRD_PARTY_DIR="${PROJECT_SOURCE_DIR}/third_party"
+        GS_THIRD_PARTY_ARCH="${GS_TARGET_ARCH}"
         GS_VIDEO_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data/video"
         GS_CLI_PROGRAM="$<TARGET_FILE:gs_cli>"
         GS_SCRIPT_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/tests/data/scripts"
